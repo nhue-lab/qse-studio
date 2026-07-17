@@ -161,7 +161,7 @@ export default function Dashboard() {
               {ncs.map((nc) => (
                 <tr key={nc.id}>
                   <td style={{ fontWeight: 600 }}>
-                    <a href={`/nc/${nc.id}`} style={{ color: 'var(--accent-blue)', textDecoration: 'none' }}>
+                    <a href={`/nc?id=${nc.id}`} style={{ color: 'var(--accent-blue)', textDecoration: 'none' }}>
                       {nc.title}
                     </a>
                   </td>

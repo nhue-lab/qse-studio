@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import './detail.css';
-import { IshikawaDiagram } from '../../../components/IshikawaDiagram';
-import { getDataProvider } from '../../../services/provider-manager';
-import { NCDetail, AuditEvent, IASuggestion } from '../../../services/data-provider';
+import { IshikawaDiagram } from '../../components/IshikawaDiagram';
+import { getDataProvider } from '../../services/provider-manager';
+import { NCDetail, AuditEvent, IASuggestion } from '../../services/data-provider';
 
 const STATUS_LABELS: Record<string, string> = {
   draft: 'Brouillon',
@@ -15,7 +16,10 @@ const STATUS_LABELS: Record<string, string> = {
   closed: 'Clôturée'
 };
 
-export default function NCDetailPage({ params }: { params: { id: string } }) {
+function NCDetailContent() {
+  const searchParams = useSearchParams();
+  const id = searchParams.get('id');
+
   const [nc, setNc] = useState<NCDetail | null>(null);
   const [auditLog, setAuditLog] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,9 +33,10 @@ export default function NCDetailPage({ params }: { params: { id: string } }) {
   const [selectedCategory, setSelectedCategory] = useState('');
 
   const fetchData = async () => {
+    if (!id) return;
     try {
       const provider = getDataProvider();
-      const detail = await provider.getNCDetail(params.id);
+      const detail = await provider.getNCDetail(id);
       setNc(detail);
       setWhyValues([
         detail.why_1 || '',
@@ -43,7 +48,7 @@ export default function NCDetailPage({ params }: { params: { id: string } }) {
       setRootCause(detail.root_cause || '');
       setSelectedCategory(detail.ishikawa_category || '');
 
-      const history = await provider.getAuditHistory(params.id);
+      const history = await provider.getAuditHistory(id);
       setAuditLog(history);
     } catch (error) {
       console.error('Erreur de récupération des détails de la NC :', error);
@@ -54,14 +59,14 @@ export default function NCDetailPage({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     fetchData();
-  }, [params.id]);
+  }, [id]);
 
   const handleSuggestIA = async () => {
-    if (!nc) return;
+    if (!nc || !id) return;
     setIaSuggesting(true);
     try {
       const provider = getDataProvider();
-      const suggestion = await provider.suggestCauses(params.id);
+      const suggestion = await provider.suggestCauses(id);
       setIaSuggestion(suggestion);
       setSelectedCategory(suggestion.category);
       
@@ -78,10 +83,10 @@ export default function NCDetailPage({ params }: { params: { id: string } }) {
   };
 
   const handleSaveAnalysis = async () => {
-    if (!nc) return;
+    if (!nc || !id) return;
     try {
       const provider = getDataProvider();
-      await provider.updateNCAnalysis(params.id, {
+      await provider.updateNCAnalysis(id, {
         why_1: whyValues[0],
         why_2: whyValues[1],
         why_3: whyValues[2],
@@ -91,19 +96,19 @@ export default function NCDetailPage({ params }: { params: { id: string } }) {
         ishikawa_category: selectedCategory
       });
       alert('Analyse sauvegardée avec succès !');
-      fetchData(); // Rafraîchir les données et l'audit log
+      fetchData();
     } catch (err) {
       alert('Erreur lors de la sauvegarde de l\'analyse');
     }
   };
 
   const handleTransitionStatus = async (targetStatus: string, proof?: string) => {
-    if (!nc) return;
+    if (!nc || !id) return;
     try {
       const provider = getDataProvider();
-      await provider.updateNCStatus(params.id, targetStatus, 'admin', proof);
+      await provider.updateNCStatus(id, targetStatus, 'admin', proof);
       alert(`Passage au statut [${STATUS_LABELS[targetStatus]}] réussi !`);
-      fetchData(); // Rafraîchir
+      fetchData();
     } catch (err: any) {
       alert(`Erreur de transition : ${err.message}`);
     }
@@ -115,6 +120,7 @@ export default function NCDetailPage({ params }: { params: { id: string } }) {
     { key: 'done', label: 'Terminée' }
   ];
 
+  if (!id) return <div className="container"><p style={{ color: '#ef4444' }}>Identifiant NC manquant.</p></div>;
   if (loading) return <div className="container"><p style={{ color: 'var(--text-secondary)', marginTop: '2rem' }}>Chargement de la fiche NC...</p></div>;
   if (!nc) return <div className="container"><p style={{ color: '#ef4444' }}>NC introuvable.</p></div>;
 
@@ -137,7 +143,7 @@ export default function NCDetailPage({ params }: { params: { id: string } }) {
           <span><strong>Gravité :</strong> {nc.severity.toUpperCase()}</span>
         </div>
 
-        {/* Boutons d'actions et de transitions rapides */}
+        {/* Boutons d'actions */}
         <div className="state-actions" style={{ marginTop: '1.5rem' }}>
           {nc.status === 'declared' && (
             <button className="btn-transition" onClick={() => handleTransitionStatus('analyzing')}>
@@ -324,5 +330,13 @@ export default function NCDetailPage({ params }: { params: { id: string } }) {
         </div>
       )}
     </div>
+  );
+}
+
+export default function NCDetailPage() {
+  return (
+    <Suspense fallback={<div className="container"><p>Chargement de la page...</p></div>}>
+      <NCDetailContent />
+    </Suspense>
   );
 }
