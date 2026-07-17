@@ -3,20 +3,13 @@ name: "Build Desktop App"
 on:
   push:
     tags:
-      - 'v*' # Se déclenche à la création d'un tag de version (ex: v0.1.0)
+      - 'v*'
 
 jobs:
   build-tauri:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: "windows-latest"
-            args: ""
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,17 +19,17 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: './web-client/package.json'
+          cache-dependency-path: './web-client/package-lock.json'
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install dependencies (frontend)
+      - name: Install dependencies (web-client)
         run: |
           cd web-client
-          npm install
+          npm ci
 
-      - name: Build frontend
+      - name: Build static frontend
         run: |
           cd web-client
           npm run build
@@ -48,7 +41,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "QSE Studio ${{ github.ref_name }}"
-          releaseBody: "Release automatique de QSE Studio. Téléchargez le fichier d'installation ci-dessous."
+          releaseBody: "Release officielle de QSE Studio. Téléchargez le fichier d'installation Windows ci-dessous."
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }}
