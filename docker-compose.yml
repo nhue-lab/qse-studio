@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  database:
+    image: postgres:15-alpine
+    container_name: qse-studio-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-qseadmin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-qsepassword}
+      POSTGRES_DB: ${DB_NAME:-qsestudio}
+    ports:
+      - "${DB_PORT_OUT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./api-server/db/migrations:/docker-entrypoint-initdb.d
+
+  api-server:
+    build:
+      context: ./api-server
+      dockerfile: Dockerfile
+    container_name: qse-studio-api
+    restart: always
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-qseadmin}
+      DB_PASSWORD: ${DB_PASSWORD:-qsepassword}
+      DB_NAME: ${DB_NAME:-qsestudio}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+    ports:
+      - "5000:5000"
+    depends_on:
+      - database
+
+  web-client:
+    build:
+      context: ./web-client
+      dockerfile: Dockerfile
+    container_name: qse-studio-web
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:5000
+    depends_on:
+      - api-server
+
+volumes:
+  postgres_data:

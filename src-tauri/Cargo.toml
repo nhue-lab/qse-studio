@@ -1,0 +1,22 @@
+[package]
+name = "qse-studio"
+version = "0.1.0"
+description = "QSE Studio Desktop"
+authors = ["Nicolas Hue"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.0.0-rc", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0-rc", features = [] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tauri-plugin-sql = { version = "2.0.0-rc", features = ["sqlite"] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "z"
+strip = true
