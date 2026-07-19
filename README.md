@@ -1,62 +1,103 @@
-# QSE Studio
+# 🛡️ QSE Studio 🇫🇷
 
-> La plateforme de management QSE que les responsables utilisent vraiment.
+> **La plateforme Open Source de Management QSE (Qualité, Sécurité, Environnement) autonome, souveraine et assistée par IA locale.**
 
-**Statut** : 🟡 Phase 0 — Conception  
-**Licence** : AGPL-3.0  
-**Cible** : PME/ETI (10–500 salariés), industrie manufacturière & BTP  
-**Déploiement** : Self-hosted via Docker Compose  
+![Version](https://img.shields.io/badge/Version-v0.2.0-blue.svg?style=flat-square)
+![Licence](https://img.shields.io/badge/Licence-AGPL--3.0-green.svg?style=flat-square)
+![Mode](https://img.shields.io/badge/Mode-100%25%20Offline%20%7C%20Desktop%20SQLite-purple.svg?style=flat-square)
+![Stack](https://img.shields.io/badge/Stack-Next.js%20%7C%20Tauri%20%7C%20TypeScript-000000.svg?style=flat-square)
 
 ---
 
-## Vision
+## 🎯 Pourquoi QSE Studio ?
 
-QSE Studio est une plateforme open source de management de la Qualité, Sécurité et Environnement,
-conçue pour les responsables QSE non-techniques des PME et ETI industrielles.
+Les responsables Qualité & HSE des PME et ETI industrielles passent **plus de 40% de leur temps** à relancer des actions par e-mail, corriger des fichiers Excel corrompus et synthétiser manuellement des indicateurs pour la direction.
 
-Elle remplace les fichiers Excel éparpillés, les emails de relance et les tableurs de suivi d'actions
-par une interface épurée, responsive, et déployable en une commande.
+**QSE Studio** résout ce problème en remplaçant le chaos des tableurs par un outil d'usine moderne :
+- 🔒 **100% Souverain & Local** : Vos données industrielles ne quittent jamais votre PC (base SQLite intégrée) ou votre serveur interne.
+- ⚡ **Zéro Bruit, 100% Signal** : Tableau de bord orienté décision (actions en retard, temps moyen de résolution, causes racines).
+- 🧠 **IA Locale Intégrée (Ollama / Moteur de règles)** : Assistance automatique à l'analyse de causes (Ishikawa 5M & 5 Pourquoi) sans envoyer un seul octet sur le cloud.
 
-## Modules prévus
+---
 
-| Module | Version | Statut |
-|---|---|---|
-| Non-Conformités & CAPA | v1.0 | 🟡 En conception |
-| Audits internes | v1.1 | ⬜ Planifié |
-| Indicateurs & Revue de direction | v1.2 | ⬜ Planifié |
-| Gestion des risques | v2.0 | ⬜ Planifié |
-| REX & Capitalisation | v2.1 | ⬜ Planifié |
-| Compétences & Habilitations | v2.2 | ⬜ Planifié |
+## ⚖️ Pourquoi remplacer Excel par QSE Studio ?
 
-## Démarrage rapide (à venir)
+| Fonctionnalité | 📊 Tableur Excel / Drive | ☁️ SaaS Propriétaire Payant | 🛡️ QSE Studio |
+|---|---|---|---|
+| **Coût d'utilisation** | Inclus dans Office | 200€ à 1500€ / mois | **100% Gratuit & Open Source** |
+| **Souveraineté des données** | Fichiers éparpillés | Cloud tiers (US) | **100% Local (SQLite) ou Auto-hébergé** |
+| **Traçabilité ISO 9001/45001** | Falsifiable | Oui | **Audit Trail Inaltérable (INSERT-Only JSON)** |
+| **Ergonomie Terrain** | Complexe sur mobile | Souvent lourd | **Interface fluide & Application Desktop (.exe)** |
+| **Assistance IA** | Non | Option payante | **IA Locale intégrée (Ollama / Failover)** |
+
+---
+
+## ✨ Fonctionnalités Phares (v0.2.0)
+
+### 📊 1. Tableau de Bord KPI "Signal > Bruit"
+- **Alerte visuelle sur les actions CAPA en retard** : Détection immédiate des jalons dépassés (`⚠️`).
+- **Graphique de répartition d'Ishikawa** : Visualisation en temps réel des catégories de panne dominantes (*Matériel, Méthode, Matière, Main d'œuvre, Milieu*).
+- **Temps moyen de résolution** : Suivi de l'efficacité globale du service QSE.
+
+### 🔍 2. Analyse des Causes Racines (5M & 5 Pourquoi)
+- **Diagramme Ishikawa dynamique SVG** : Sélection interactive des catégories d'anomalie.
+- **Formulaire 5 Pourquoi guidé** : Cheminement étape par étape pour identifier la cause profonde.
+- **Bouton ✨ Suggérer avec l'IA** : Pré-remplissage intelligent des questions et détection automatique de la catégorie via IA local (Ollama) ou moteur de règles.
+
+### 👥 3. Annuaire Utilisateurs & Onboarding Admin (`/users`)
+- **Assistant de Premier Lancement** : Détection de base neuve avec attribution automatique des droits Administrateur.
+- **Gestion des Habilitations** : Attribution des rôles métiers (`Administrateur`, `Responsable QSE`, `Opérateur Terrain`, `Auditeur`).
+
+### ✅ 4. Kanban CAPA Interactif & Audit Trail ISO
+- **Changement de statut en 1 clic** : Boutons d'action rapide (`▶ En cours`, `✓ Terminer`, `✕ Annuler`, `↺ Ré-ouvrir`).
+- **Traçabilité ISO 9001/45001** : Enregistrement inaltérable de chaque modification et mouvement dans le Journal d'Audit.
+- **Exportation PDF** : Fiche imprimable conforme aux normes d'audit.
+
+---
+
+## 🚀 Démarrage Rapide
+
+### Option A : Application Desktop Windows (.exe)
+Aucune installation de serveur ou de dépendance requise.
+1. Rendez-vous dans la section [Releases](https://github.com/nhue-lab/qse-studio/releases).
+2. Téléchargez le fichier **`QSE-Studio-Setup.exe`** de la version `v0.2.0`.
+3. Lancez l'application : elle s'exécute directement sur votre PC avec une base de données local SQLite.
+
+### Option B : Mode Développeur / Auto-Hébergé
 
 ```bash
-git clone https://github.com/<org>/qse-studio.git
-cd qse-studio
-docker compose up -d
+# 1. Cloner le dépôt
+git clone https://github.com/nhue-lab/qse-studio.git
+cd qse-studio/web-client
+
+# 2. Installer les dépendances
+npm install
+
+# 3. Lancer le serveur de développement
+npm run dev
 ```
 
-Puis ouvrir `http://localhost:3000`.
+L'application est disponible sur **`http://localhost:3000`**.
 
-## Stack technique
+---
 
-- **Frontend** : Next.js (React) — Responsive, mobile-friendly
-- **Backend** : Node.js + Fastify — API REST typée TypeScript
-- **Base de données** : PostgreSQL
-- **Déploiement** : Docker Compose
-- **Exports** : PDF (Puppeteer)
-- **IA locale (optionnel)** : Ollama — aucune donnée ne sort du serveur
+## 🗺️ Roadmap de Développement
 
-## Philosophie
+- [x] **v0.1.0** : MVP State Machine NC, Diagramme Ishikawa SVG & Export PDF.
+- [x] **v0.2.0** : Annuaire Utilisateurs, Onboarding Admin, Kanban CAPA interactif & KPIs Signal.
+- [ ] **v0.3.0** : Module d'Audits Internes & Grilles de contrôle ISO 9001 / 14001 / 45001.
+- [ ] **v0.4.0** : Module d'Évaluation des Risques Professionnels (DUERP).
 
-- **Zéro donnée sortante** : Les données QSE (incidents, NC, accidents) sont sensibles. Tout reste sur ton serveur.
-- **IA frugale** : L'IA n'intervient que là où elle rend le système plus robuste et déterministe, jamais pour faire joli.
-- **UX non-technique** : Conçu pour des responsables QSE, pas des développeurs.
+---
 
-## Contribution
+## 🤝 Contribution & Communauté
 
-Le projet est en cours de conception. La Phase 0 (Design Doc) sera publiée prochainement.
+Les contributions sont les bienvenues ! N'hésitez pas à ouvrir une *Issue* ou à soumettre une *Pull Request*.
 
-## Licence
+Si ce projet vous est utile, **pensez à lui donner une ⭐ Star sur GitHub** pour soutenir le développement open source !
 
-AGPL-3.0 — Voir [LICENSE](./LICENSE).
+---
+
+## 📄 Licence
+
+Ce projet est sous licence **AGPL-3.0** — Voir le fichier [LICENSE](./LICENSE) pour plus de détails.
