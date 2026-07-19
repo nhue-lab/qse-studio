@@ -275,3 +275,24 @@ header {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* Impression d'affiches QR Code */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-qr-poster, #printable-qr-poster * {
+    visibility: visible;
+  }
+  #printable-qr-poster {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    box-shadow: none !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

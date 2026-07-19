@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { getDataProvider, getServerUrl, setServerUrl } from '../services/provider-manager';
 import { NonConformity, DashboardMetrics } from '../services/data-provider';
 import { OnboardingModal } from '../components/OnboardingModal';
+import { QRCodeModal } from '../components/QRCodeModal';
 
 export default function Dashboard() {
   const [ncs, setNcs] = useState<NonConformity[]>([]);
@@ -13,6 +14,7 @@ export default function Dashboard() {
   const [showConfig, setShowConfig] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
 
   // Formulaire modal state NC
   const [newTitle, setNewTitle] = useState('');
@@ -25,7 +27,6 @@ export default function Dashboard() {
     try {
       const provider = getDataProvider();
 
-      // Vérifier si un premier utilisateur existe, sinon déclencher l'Onboarding Admin
       const userExists = await provider.hasUsers();
       if (!userExists) {
         setShowOnboarding(true);
@@ -76,7 +77,6 @@ export default function Dashboard() {
     fetchDashboardData();
   };
 
-  // Exporter au format Excel / CSV
   const handleExportCSV = () => {
     if (ncs.length === 0) {
       alert('Aucune donnée à exporter.');
@@ -148,6 +148,11 @@ export default function Dashboard() {
         />
       )}
 
+      {/* Modal QR Code Imprimable */}
+      {showQRModal && (
+        <QRCodeModal onClose={() => setShowQRModal(false)} />
+      )}
+
       <div className="section-header">
         <div>
           <h1 className="dashboard-title">Tableau de Bord QSE</h1>
@@ -156,6 +161,13 @@ export default function Dashboard() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <button 
+            className="btn-secondary" 
+            onClick={() => setShowQRModal(true)}
+            style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+          >
+            📱 QR Code Terrain
+          </button>
           <button 
             className="btn-secondary" 
             onClick={() => setShowConfig(true)}
@@ -212,7 +224,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ANONYMISED ISHIKAWA CAUSES DISTRIBUTION (SIGNAL KPI) */}
+      {/* ISHIKAWA CAUSES DISTRIBUTION (SIGNAL KPI) */}
       {metrics && metrics.ishikawaDistribution && (
         <div style={{ backgroundColor: 'var(--card-bg)', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem', border: '1px solid var(--border-color)' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
