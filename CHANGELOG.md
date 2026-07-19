@@ -6,6 +6,18 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 
 ---
 
+## [v0.2.0] - 2026-07-19
+
+### Ajouté
+- **Gestion et Annuaire des Utilisateurs (`/users`)** : Nouvelle page permettant de lister les membres de l'équipe et de leur attribuer des rôles métiers (`admin`, `qse_manager`, `operator`, `auditor`).
+- **Onboarding Administrateur Automatique** : Assistant de premier lancement qui détecte une base vierge et attribue automatiquement les privilèges d'administrateur au premier utilisateur créé.
+- **Tableau de Bord KPI (Signal > Bruit)** : Nouveaux indicateurs clés avec alerte visuelle sur les actions CAPA en retard, calcul du temps moyen de résolution et graphique de répartition des causes par catégorie d'Ishikawa.
+- **Kanban CAPA Interactif** : Boutons de changement de statut rapide sur les cartes (`▶ En cours`, `✓ Terminer`, `✕ Annuler`, `↺ Ré-ouvrir`), avec alerte rouge `⚠️` en cas de dépassement de délai.
+- **Création d'Action CAPA liée à l'Annuaire** : Modale d'ajout d'actions CAPA permettant la sélection dynamique du responsable parmi les utilisateurs de la base.
+- **Traçabilité Audit des Actions** : Journalisation automatique de la création et des mouvements de statut des actions CAPA dans l'Audit Trail inaltérable.
+
+---
+
 ## [v0.1.0] - 2026-07-17
 
 Première version fonctionnelle de QSE Studio, livrée avec une architecture hybride (Solo local & Collaboratif) et les patterns de robustesse inspirés d'agentic-builder.
