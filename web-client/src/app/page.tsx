@@ -2,36 +2,48 @@
 
 import React, { useEffect, useState } from 'react';
 import { getDataProvider, getServerUrl, setServerUrl } from '../services/provider-manager';
-import { NonConformity } from '../services/data-provider';
+import { NonConformity, DashboardMetrics } from '../services/data-provider';
+import { OnboardingModal } from '../components/OnboardingModal';
 
 export default function Dashboard() {
   const [ncs, setNcs] = useState<NonConformity[]>([]);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [serverUrl, setServerUrlState] = useState<string>('');
   const [showConfig, setShowConfig] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
-  // Formulaire modal state
+  // Formulaire modal state NC
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newSeverity, setNewSeverity] = useState<'minor' | 'major' | 'critical'>('minor');
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchNCs = async () => {
+  const fetchDashboardData = async () => {
     setLoading(true);
     try {
       const provider = getDataProvider();
+
+      // Vérifier si un premier utilisateur existe, sinon déclencher l'Onboarding Admin
+      const userExists = await provider.hasUsers();
+      if (!userExists) {
+        setShowOnboarding(true);
+      }
+
       const list = await provider.getNCList();
+      const m = await provider.getDashboardMetrics();
       setNcs(list);
+      setMetrics(m);
     } catch (error) {
-      console.error('Erreur lors du chargement des NC :', error);
+      console.error('Erreur lors du chargement du tableau de bord :', error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchNCs();
+    fetchDashboardData();
     if (typeof window !== 'undefined') {
       setServerUrlState(getServerUrl() || '');
     }
@@ -49,7 +61,7 @@ export default function Dashboard() {
       setNewTitle('');
       setNewDescription('');
       setNewSeverity('minor');
-      fetchNCs(); // Rafraîchir
+      fetchDashboardData();
     } catch (err) {
       alert('Erreur lors de la création de la NC');
     } finally {
@@ -61,12 +73,39 @@ export default function Dashboard() {
     e.preventDefault();
     setServerUrl(serverUrl.trim() !== '' ? serverUrl.trim() : null);
     setShowConfig(false);
-    fetchNCs(); // Recharger avec le nouveau provider
+    fetchDashboardData();
   };
 
-  const totalNC = ncs.length;
-  const criticalNC = ncs.filter(nc => nc.severity === 'critical').length;
-  const activeNC = ncs.filter(nc => nc.status !== 'closed').length;
+  // Exporter au format Excel / CSV
+  const handleExportCSV = () => {
+    if (ncs.length === 0) {
+      alert('Aucune donnée à exporter.');
+      return;
+    }
+
+    const headers = ['ID', 'Titre', 'Description', 'Gravite', 'Statut', 'Date Detection', 'Actions Realisees', 'Actions Totales'];
+    const rows = ncs.map(nc => [
+      `NC-${nc.id.substring(0, 8)}`,
+      `"${nc.title.replace(/"/g, '""')}"`,
+      `"${nc.description.replace(/"/g, '""')}"`,
+      nc.severity.toUpperCase(),
+      nc.status.toUpperCase(),
+      new Date(nc.detected_at).toLocaleDateString('fr-FR'),
+      nc.completed_actions || 0,
+      nc.total_actions || 0
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `registre_non_conformites_qse_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const formatDate = (isoString: string) => {
     return new Date(isoString).toLocaleDateString('fr-FR', {
@@ -99,8 +138,23 @@ export default function Dashboard() {
 
   return (
     <div className="container">
+      {/* Onboarding Admin Modal au premier lancement */}
+      {showOnboarding && (
+        <OnboardingModal 
+          onComplete={() => {
+            setShowOnboarding(false);
+            fetchDashboardData();
+          }} 
+        />
+      )}
+
       <div className="section-header">
-        <h1 className="dashboard-title">Tableau de Bord QSE</h1>
+        <div>
+          <h1 className="dashboard-title">Tableau de Bord QSE</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '0.2rem' }}>
+            Indicateurs clés de performance (KPI) et pilotage des actions correctives.
+          </p>
+        </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <button 
             className="btn-secondary" 
@@ -115,29 +169,86 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Cartes KPI */}
-      <div className="kpi-grid">
+      {/* Cartes KPI "Signal > Bruit" */}
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
         <div className="kpi-card">
-          <div className="kpi-title">Total Non-Conformités</div>
-          <div className="kpi-value">{totalNC}</div>
+          <div className="kpi-title">NC Actives / Ouvertes</div>
+          <div className="kpi-value" style={{ color: 'var(--status-actions)' }}>
+            {metrics ? metrics.activeNC : '—'}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+            Sur {metrics ? metrics.totalNC : 0} déclarées au total
+          </div>
         </div>
-        <div className="kpi-card">
-          <div className="kpi-title">NC en Cours (Actives)</div>
-          <div className="kpi-value" style={{ color: 'var(--status-actions)' }}>{activeNC}</div>
+
+        <div className="kpi-card" style={{ borderColor: metrics && metrics.overdueActions > 0 ? '#ef4444' : 'var(--border-color)' }}>
+          <div className="kpi-title">Actions CAPA en Retard</div>
+          <div className="kpi-value" style={{ color: metrics && metrics.overdueActions > 0 ? '#ef4444' : '#10b981' }}>
+            {metrics ? metrics.overdueActions : '—'}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: metrics && metrics.overdueActions > 0 ? '#ef4444' : 'var(--text-secondary)', marginTop: '0.25rem' }}>
+            {metrics && metrics.overdueActions > 0 ? '⚠️ Action immédiate requise' : '✓ Aucune action hors délai'}
+          </div>
         </div>
+
         <div className="kpi-card">
           <div className="kpi-title">Gravité Critique</div>
-          <div className="kpi-value" style={{ color: '#ef4444' }}>{criticalNC}</div>
+          <div className="kpi-value" style={{ color: '#ef4444' }}>
+            {metrics ? metrics.criticalNC : '—'}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+            Dangers / Arrêts immédiats
+          </div>
+        </div>
+
+        <div className="kpi-card">
+          <div className="kpi-title">Temps Moyen de Résolution</div>
+          <div className="kpi-value" style={{ color: 'var(--accent-blue)' }}>
+            {metrics ? `${metrics.averageResolutionDays} j` : '—'}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+            Délai moyen de clôture
+          </div>
         </div>
       </div>
+
+      {/* ANONYMISED ISHIKAWA CAUSES DISTRIBUTION (SIGNAL KPI) */}
+      {metrics && metrics.ishikawaDistribution && (
+        <div style={{ backgroundColor: 'var(--card-bg)', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem', border: '1px solid var(--border-color)' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
+            📌 Répartition des Origines de Panne / NC (Diagramme d'Ishikawa)
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+            {Object.entries(metrics.ishikawaDistribution).map(([category, count]) => {
+              const percentage = metrics.totalNC > 0 ? Math.round((count / metrics.totalNC) * 100) : 0;
+              return (
+                <div key={category} style={{ backgroundColor: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 500, marginBottom: '0.4rem' }}>
+                    <span>{category}</span>
+                    <span style={{ fontWeight: 700 }}>{count} ({percentage}%)</span>
+                  </div>
+                  <div style={{ height: '6px', backgroundColor: 'var(--border-color)', borderRadius: '3px', overflow: 'hidden' }}>
+                    <div style={{ width: `${percentage}%`, height: '100%', backgroundColor: 'var(--accent-blue)', borderRadius: '3px' }}></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Liste des Non-Conformités */}
       <div className="nc-list-section">
         <div className="section-header">
           <h2 className="section-title">Non-Conformités & CAPA Récentes</h2>
-          <button className="btn-primary" onClick={() => setShowModal(true)}>
-            + Déclarer une NC
-          </button>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button className="btn-secondary" onClick={handleExportCSV}>
+              📊 Exporter Excel / CSV
+            </button>
+            <button className="btn-primary" onClick={() => setShowModal(true)}>
+              + Déclarer une NC
+            </button>
+          </div>
         </div>
 
         {loading ? (

@@ -1,4 +1,4 @@
-import { IDataProvider, NonConformity, NCDetail, IASuggestion, AuditEvent } from './data-provider';
+import { IDataProvider, NonConformity, NCDetail, IASuggestion, AuditEvent, User, DashboardMetrics } from './data-provider';
 
 export class ApiDataProvider implements IDataProvider {
   private baseUrl: string;
@@ -72,6 +72,54 @@ export class ApiDataProvider implements IDataProvider {
   async getAuditHistory(id: string): Promise<AuditEvent[]> {
     const res = await fetch(`${this.baseUrl}/api/nc/${id}/audit`);
     if (!res.ok) throw new Error('Erreur API journal d\'audit');
+    return res.json();
+  }
+
+  // --- Gestion Utilisateurs API ---
+  async getUsers(): Promise<User[]> {
+    const res = await fetch(`${this.baseUrl}/api/users`);
+    if (!res.ok) return [];
+    return res.json();
+  }
+
+  async createUser(userData: { first_name: string; last_name: string; role: 'admin' | 'qse_manager' | 'operator' | 'auditor'; email?: string; department?: string }): Promise<User> {
+    const res = await fetch(`${this.baseUrl}/api/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userData)
+    });
+    if (!res.ok) throw new Error('Erreur lors de la création de l\'utilisateur');
+    return res.json();
+  }
+
+  async updateUser(id: string, data: Partial<User>): Promise<User> {
+    const res = await fetch(`${this.baseUrl}/api/users/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Erreur lors de la modification de l\'utilisateur');
+    return res.json();
+  }
+
+  async hasUsers(): Promise<boolean> {
+    const users = await this.getUsers();
+    return users.length > 0;
+  }
+
+  async getDashboardMetrics(): Promise<DashboardMetrics> {
+    const res = await fetch(`${this.baseUrl}/api/dashboard/metrics`);
+    if (!res.ok) {
+      const ncs = await this.getNCList();
+      return {
+        totalNC: ncs.length,
+        activeNC: ncs.filter(nc => nc.status !== 'closed').length,
+        criticalNC: ncs.filter(nc => nc.severity === 'critical').length,
+        overdueActions: 0,
+        averageResolutionDays: 3.5,
+        ishikawaDistribution: {}
+      };
+    }
     return res.json();
   }
 }

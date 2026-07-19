@@ -9,6 +9,8 @@ export interface NonConformity {
   reporter_last_name?: string;
   total_actions?: number;
   completed_actions?: number;
+  ishikawa_category?: string;
+  actions?: CapaAction[];
 }
 
 export interface CapaAction {
@@ -38,15 +40,33 @@ export interface NCDetail extends NonConformity {
   why_4?: string;
   why_5?: string;
   root_cause?: string;
-  ishikawa_category?: string;
   effectiveness_proof?: string;
-  actions?: CapaAction[];
 }
 
 export interface IASuggestion {
   category: string;
   suggestedWhys: string[];
   source: 'ollama_ai' | 'rules_engine_fallback';
+}
+
+export interface User {
+  id: string;
+  first_name: string;
+  last_name: string;
+  role: 'admin' | 'qse_manager' | 'operator' | 'auditor';
+  email?: string;
+  department?: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface DashboardMetrics {
+  totalNC: number;
+  activeNC: number;
+  criticalNC: number;
+  overdueActions: number;
+  averageResolutionDays: number;
+  ishikawaDistribution: Record<string, number>;
 }
 
 /**
@@ -72,4 +92,13 @@ export interface IDataProvider {
   updateNCStatus(id: string, targetStatus: string, role: string, proof?: string): Promise<NonConformity>;
   suggestCauses(id: string): Promise<IASuggestion>;
   getAuditHistory(id: string): Promise<AuditEvent[]>;
+  
+  // Gestion Utilisateurs
+  getUsers(): Promise<User[]>;
+  createUser(userData: { first_name: string; last_name: string; role: 'admin' | 'qse_manager' | 'operator' | 'auditor'; email?: string; department?: string }): Promise<User>;
+  updateUser(id: string, data: Partial<User>): Promise<User>;
+  hasUsers(): Promise<boolean>;
+
+  // Métriques KPI Dashboard
+  getDashboardMetrics(): Promise<DashboardMetrics>;
 }

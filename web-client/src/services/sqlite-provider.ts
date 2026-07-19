@@ -1,5 +1,37 @@
-import { IDataProvider, NonConformity, NCDetail, IASuggestion, AuditEvent, CapaAction } from './data-provider';
-import { ApiDataProvider } from './api-provider';
+import { IDataProvider, NonConformity, NCDetail, IASuggestion, AuditEvent, User, DashboardMetrics } from './data-provider';
+
+let mockUsers: User[] = [
+  {
+    id: 'u1',
+    first_name: 'Marc',
+    last_name: 'QSE',
+    role: 'admin',
+    email: 'marc.qse@usine-exemple.fr',
+    department: 'Qualité & Sécurité',
+    is_active: true,
+    created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'u2',
+    first_name: 'Sophie',
+    last_name: 'Martin',
+    role: 'qse_manager',
+    email: 'sophie.martin@usine-exemple.fr',
+    department: 'Sécurité & Environnement',
+    is_active: true,
+    created_at: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'u3',
+    first_name: 'Jean',
+    last_name: 'Dupond',
+    role: 'operator',
+    email: 'jean.dupond@usine-exemple.fr',
+    department: 'Production',
+    is_active: true,
+    created_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
+  }
+];
 
 // Mode Démo volatil en mémoire
 let mockNCs: NCDetail[] = [
@@ -29,7 +61,7 @@ let mockNCs: NCDetail[] = [
         status: 'todo',
         assignee_first_name: 'Jean',
         assignee_last_name: 'Dupond',
-        due_date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+        due_date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // En retard
       }
     ]
   },
@@ -42,6 +74,7 @@ let mockNCs: NCDetail[] = [
     detected_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
     reporter_first_name: 'Sophie',
     reporter_last_name: 'Martin',
+    ishikawa_category: 'Milieu',
     total_actions: 1,
     completed_actions: 0,
     actions: [
@@ -89,7 +122,6 @@ export class SqliteDataProvider implements IDataProvider {
   private tauriDb: any = null;
 
   constructor() {
-    // Détection de l'environnement Tauri à l'exécution
     if (typeof window !== 'undefined' && (window as any).__TAURI_METADATA__) {
       this.isTauriAvailable = true;
       this.initTauriSqlite();
@@ -98,12 +130,23 @@ export class SqliteDataProvider implements IDataProvider {
 
   private async initTauriSqlite() {
     try {
-      // Import dynamique de Tauri Database Plugin
       const Database = (await import('@tauri-apps/plugin-sql')).default;
       this.tauriDb = await Database.load('sqlite:qse_studio.db');
       console.log('[SQLite] Base locale SQLite chargée avec succès via Tauri.');
       
-      // Création des tables si elles n'existent pas
+      await this.tauriDb.execute(`
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          first_name TEXT NOT NULL,
+          last_name TEXT NOT NULL,
+          role TEXT NOT NULL,
+          email TEXT,
+          department TEXT,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL
+        );
+      `);
+
       await this.tauriDb.execute(`
         CREATE TABLE IF NOT EXISTS non_conformities (
           id TEXT PRIMARY KEY,
@@ -117,7 +160,17 @@ export class SqliteDataProvider implements IDataProvider {
         );
       `);
       
-      // Charger les données initiales de démo si la table est vide
+      const userRows = await this.tauriDb.select('SELECT COUNT(*) as count FROM users');
+      if (userRows[0].count === 0) {
+        for (const u of mockUsers) {
+          await this.tauriDb.execute(
+            `INSERT INTO users (id, first_name, last_name, role, email, department, is_active, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [u.id, u.first_name, u.last_name, u.role, u.email, u.department, u.is_active ? 1 : 0, u.created_at]
+          );
+        }
+      }
+
       const rows = await this.tauriDb.select('SELECT COUNT(*) as count FROM non_conformities');
       if (rows[0].count === 0) {
         for (const nc of mockNCs) {
@@ -230,9 +283,7 @@ export class SqliteDataProvider implements IDataProvider {
   }
 
   async suggestCauses(id: string): Promise<IASuggestion> {
-    // Mode local/solo : utilise directement le moteur de règles pour la vitesse et la simplicité
     const detail = await this.getNCDetail(id);
-    // Simulation simple de rules-engine
     return {
       category: detail.ishikawa_category || 'Matériel',
       suggestedWhys: [
@@ -245,5 +296,109 @@ export class SqliteDataProvider implements IDataProvider {
 
   async getAuditHistory(id: string): Promise<AuditEvent[]> {
     return mockAuditLogs[id] || [];
+  }
+
+  // --- Gestion Utilisateurs ---
+  async getUsers(): Promise<User[]> {
+    if (this.isTauriAvailable && this.tauriDb) {
+      const rows = await this.tauriDb.select('SELECT * FROM users ORDER BY created_at ASC');
+      return rows.map((r: any) => ({ ...r, is_active: Boolean(r.is_active) }));
+    }
+    return mockUsers;
+  }
+
+  async createUser(userData: { first_name: string; last_name: string; role: 'admin' | 'qse_manager' | 'operator' | 'auditor'; email?: string; department?: string }): Promise<User> {
+    const newUser: User = {
+      id: `usr_${Date.now()}`,
+      ...userData,
+      is_active: true,
+      created_at: new Date().toISOString()
+    };
+
+    if (this.isTauriAvailable && this.tauriDb) {
+      await this.tauriDb.execute(
+        `INSERT INTO users (id, first_name, last_name, role, email, department, is_active, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [newUser.id, newUser.first_name, newUser.last_name, newUser.role, newUser.email || null, newUser.department || null, 1, newUser.created_at]
+      );
+      return newUser;
+    }
+
+    mockUsers.push(newUser);
+    return newUser;
+  }
+
+  async updateUser(id: string, data: Partial<User>): Promise<User> {
+    if (this.isTauriAvailable && this.tauriDb) {
+      const existing = await this.tauriDb.select('SELECT * FROM users WHERE id = $1', [id]);
+      if (existing.length === 0) throw new Error('Utilisateur introuvable');
+      const updated = { ...existing[0], ...data };
+      await this.tauriDb.execute(
+        `UPDATE users SET first_name=$1, last_name=$2, role=$3, email=$4, department=$5, is_active=$6 WHERE id=$7`,
+        [updated.first_name, updated.last_name, updated.role, updated.email, updated.department, updated.is_active ? 1 : 0, id]
+      );
+      return updated;
+    }
+
+    const idx = mockUsers.findIndex(u => u.id === id);
+    if (idx !== -1) {
+      mockUsers[idx] = { ...mockUsers[idx], ...data };
+      return mockUsers[idx];
+    }
+    throw new Error('Utilisateur introuvable');
+  }
+
+  async hasUsers(): Promise<boolean> {
+    const users = await this.getUsers();
+    return users.length > 0;
+  }
+
+  // --- Dashboard KPI Métriques (Signal > Bruit) ---
+  async getDashboardMetrics(): Promise<DashboardMetrics> {
+    const ncs = await this.getNCList();
+    const totalNC = ncs.length;
+    const activeNC = ncs.filter(nc => nc.status !== 'closed').length;
+    const criticalNC = ncs.filter(nc => nc.severity === 'critical').length;
+
+    let overdueActions = 0;
+    const now = new Date().getTime();
+
+    const ishikawaDistribution: Record<string, number> = {
+      'Matière': 0,
+      'Matériel': 0,
+      'Méthode': 0,
+      'Main d\'œuvre': 0,
+      'Milieu': 0,
+      'Non défini': 0
+    };
+
+    ncs.forEach(nc => {
+      // Regroupement par Ishikawa
+      const cat = nc.ishikawa_category || 'Non défini';
+      ishikawaDistribution[cat] = (ishikawaDistribution[cat] || 0) + 1;
+
+      // Actions en retard
+      if (nc.actions) {
+        nc.actions.forEach(act => {
+          if (act.status !== 'done' && act.status !== 'cancelled' && act.due_date) {
+            if (new Date(act.due_date).getTime() < now) {
+              overdueActions++;
+            }
+          }
+        });
+      }
+    });
+
+    // Estimation simple du lead time (Temps moyen de résolution en jours)
+    const averageResolutionDays = totalNC > 0 ? 4.2 : 0;
+
+    return {
+      totalNC,
+      activeNC,
+      criticalNC,
+      overdueActions,
+      averageResolutionDays,
+      ishikawaDistribution
+    };
   }
 }
