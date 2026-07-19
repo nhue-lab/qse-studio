@@ -1,4 +1,4 @@
-import { IDataProvider, NonConformity, NCDetail, IASuggestion, AuditEvent, User, DashboardMetrics } from './data-provider';
+import { IDataProvider, NonConformity, NCDetail, IASuggestion, AuditEvent, User, DashboardMetrics, CapaAction } from './data-provider';
 
 let mockUsers: User[] = [
   {
@@ -61,7 +61,7 @@ let mockNCs: NCDetail[] = [
         status: 'todo',
         assignee_first_name: 'Jean',
         assignee_last_name: 'Dupond',
-        due_date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // En retard
+        due_date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
       }
     ]
   },
@@ -112,11 +112,6 @@ let mockAuditLogs: Record<string, AuditEvent[]> = {
   ]
 };
 
-/**
- * Provider unifié SQLite / Simulation.
- * Gère le mode solo en utilisant SQLite si Tauri est actif,
- * sinon retombe gracieusement sur un état en mémoire RAM (mode démo).
- */
 export class SqliteDataProvider implements IDataProvider {
   private isTauriAvailable = false;
   private tauriDb: any = null;
@@ -132,7 +127,6 @@ export class SqliteDataProvider implements IDataProvider {
     try {
       const Database = (await import('@tauri-apps/plugin-sql')).default;
       this.tauriDb = await Database.load('sqlite:qse_studio.db');
-      console.log('[SQLite] Base locale SQLite chargée avec succès via Tauri.');
       
       await this.tauriDb.execute(`
         CREATE TABLE IF NOT EXISTS users (
@@ -157,6 +151,19 @@ export class SqliteDataProvider implements IDataProvider {
           detected_at TEXT NOT NULL,
           why_1 TEXT, why_2 TEXT, why_3 TEXT, why_4 TEXT, why_5 TEXT,
           root_cause TEXT, ishikawa_category TEXT, effectiveness_proof TEXT
+        );
+      `);
+
+      await this.tauriDb.execute(`
+        CREATE TABLE IF NOT EXISTS capa_actions (
+          id TEXT PRIMARY KEY,
+          nc_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL,
+          status TEXT NOT NULL,
+          assignee_first_name TEXT NOT NULL,
+          assignee_last_name TEXT NOT NULL,
+          due_date TEXT NOT NULL
         );
       `);
       
@@ -199,7 +206,9 @@ export class SqliteDataProvider implements IDataProvider {
     if (this.isTauriAvailable && this.tauriDb) {
       const rows = await this.tauriDb.select('SELECT * FROM non_conformities WHERE id = $1', [id]);
       if (rows.length === 0) throw new Error('NC introuvable');
-      return rows[0];
+      const nc = rows[0];
+      const actions = await this.tauriDb.select('SELECT * FROM capa_actions WHERE nc_id = $1', [id]);
+      return { ...nc, actions };
     }
     const found = mockNCs.find(nc => nc.id === id);
     if (!found) throw new Error('NC introuvable');
@@ -217,7 +226,8 @@ export class SqliteDataProvider implements IDataProvider {
       reporter_first_name: 'Marc',
       reporter_last_name: 'QSE',
       total_actions: 0,
-      completed_actions: 0
+      completed_actions: 0,
+      actions: []
     };
 
     if (this.isTauriAvailable && this.tauriDb) {
@@ -298,6 +308,97 @@ export class SqliteDataProvider implements IDataProvider {
     return mockAuditLogs[id] || [];
   }
 
+  // --- Actions CAPA & Traçabilité Audit ---
+  async createCapaAction(ncId: string, actionData: { title: string; description: string; assigneeId: string; dueDate: string }): Promise<CapaAction> {
+    const users = await this.getUsers();
+    const assignee = users.find(u => u.id === actionData.assigneeId) || { first_name: 'Agent', last_name: 'QSE' };
+
+    const newAction: CapaAction = {
+      id: `act_${Date.now()}`,
+      title: actionData.title,
+      description: actionData.description,
+      status: 'todo',
+      assignee_first_name: assignee.first_name,
+      assignee_last_name: assignee.last_name,
+      due_date: actionData.dueDate
+    };
+
+    if (this.isTauriAvailable && this.tauriDb) {
+      await this.tauriDb.execute(
+        `INSERT INTO capa_actions (id, nc_id, title, description, status, assignee_first_name, assignee_last_name, due_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [newAction.id, ncId, newAction.title, newAction.description, newAction.status, newAction.assignee_first_name, newAction.assignee_last_name, newAction.due_date]
+      );
+    } else {
+      const nc = mockNCs.find(n => n.id === ncId);
+      if (nc) {
+        if (!nc.actions) nc.actions = [];
+        nc.actions.push(newAction);
+        nc.total_actions = nc.actions.length;
+      }
+    }
+
+    // Enregistrement de l'événement dans le journal d'audit
+    if (!mockAuditLogs[ncId]) mockAuditLogs[ncId] = [];
+    mockAuditLogs[ncId].unshift({
+      id: `e_${Date.now()}`,
+      action: 'action_created',
+      actor_first_name: 'Administrateur',
+      actor_last_name: 'QSE',
+      new_value: { title: newAction.title, status: 'À faire', assignee: `${assignee.first_name} ${assignee.last_name}` },
+      created_at: new Date().toISOString()
+    });
+
+    return newAction;
+  }
+
+  async updateCapaActionStatus(ncId: string, actionId: string, targetStatus: 'todo' | 'in_progress' | 'done' | 'cancelled'): Promise<CapaAction> {
+    let updatedAction: CapaAction | null = null;
+    let oldStatusLabel = '';
+    const statusLabels: Record<string, string> = {
+      todo: 'À faire',
+      in_progress: 'En cours',
+      done: 'Terminée',
+      cancelled: 'Annulée'
+    };
+
+    if (this.isTauriAvailable && this.tauriDb) {
+      await this.tauriDb.execute(
+        `UPDATE capa_actions SET status = $1 WHERE id = $2 AND nc_id = $3`,
+        [targetStatus, actionId, ncId]
+      );
+      const rows = await this.tauriDb.select('SELECT * FROM capa_actions WHERE id = $1', [actionId]);
+      if (rows.length > 0) updatedAction = rows[0];
+    } else {
+      const nc = mockNCs.find(n => n.id === ncId);
+      if (nc && nc.actions) {
+        const act = nc.actions.find(a => a.id === actionId);
+        if (act) {
+          oldStatusLabel = statusLabels[act.status] || act.status;
+          act.status = targetStatus;
+          nc.completed_actions = nc.actions.filter(a => a.status === 'done').length;
+          updatedAction = { ...act };
+        }
+      }
+    }
+
+    if (!updatedAction) throw new Error('Action CAPA introuvable');
+
+    // Traçabilité Audit Trail
+    if (!mockAuditLogs[ncId]) mockAuditLogs[ncId] = [];
+    mockAuditLogs[ncId].unshift({
+      id: `e_${Date.now()}`,
+      action: 'action_status_changed',
+      actor_first_name: 'Administrateur',
+      actor_last_name: 'QSE',
+      previous_value: { action: updatedAction.title, status: oldStatusLabel },
+      new_value: { action: updatedAction.title, status: statusLabels[targetStatus] || targetStatus },
+      created_at: new Date().toISOString()
+    });
+
+    return updatedAction;
+  }
+
   // --- Gestion Utilisateurs ---
   async getUsers(): Promise<User[]> {
     if (this.isTauriAvailable && this.tauriDb) {
@@ -373,11 +474,9 @@ export class SqliteDataProvider implements IDataProvider {
     };
 
     ncs.forEach(nc => {
-      // Regroupement par Ishikawa
       const cat = nc.ishikawa_category || 'Non défini';
       ishikawaDistribution[cat] = (ishikawaDistribution[cat] || 0) + 1;
 
-      // Actions en retard
       if (nc.actions) {
         nc.actions.forEach(act => {
           if (act.status !== 'done' && act.status !== 'cancelled' && act.due_date) {
@@ -389,7 +488,6 @@ export class SqliteDataProvider implements IDataProvider {
       }
     });
 
-    // Estimation simple du lead time (Temps moyen de résolution en jours)
     const averageResolutionDays = totalNC > 0 ? 4.2 : 0;
 
     return {

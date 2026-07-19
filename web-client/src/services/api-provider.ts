@@ -1,4 +1,4 @@
-import { IDataProvider, NonConformity, NCDetail, IASuggestion, AuditEvent, User, DashboardMetrics } from './data-provider';
+import { IDataProvider, NonConformity, NCDetail, IASuggestion, AuditEvent, User, DashboardMetrics, CapaAction } from './data-provider';
 
 export class ApiDataProvider implements IDataProvider {
   private baseUrl: string;
@@ -72,6 +72,27 @@ export class ApiDataProvider implements IDataProvider {
   async getAuditHistory(id: string): Promise<AuditEvent[]> {
     const res = await fetch(`${this.baseUrl}/api/nc/${id}/audit`);
     if (!res.ok) throw new Error('Erreur API journal d\'audit');
+    return res.json();
+  }
+
+  // --- Actions CAPA ---
+  async createCapaAction(ncId: string, actionData: { title: string; description: string; assigneeId: string; dueDate: string }): Promise<CapaAction> {
+    const res = await fetch(`${this.baseUrl}/api/nc/${ncId}/actions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(actionData)
+    });
+    if (!res.ok) throw new Error('Erreur lors de la création de l\'action CAPA');
+    return res.json();
+  }
+
+  async updateCapaActionStatus(ncId: string, actionId: string, targetStatus: 'todo' | 'in_progress' | 'done' | 'cancelled'): Promise<CapaAction> {
+    const res = await fetch(`${this.baseUrl}/api/nc/${ncId}/actions/${actionId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetStatus })
+    });
+    if (!res.ok) throw new Error('Erreur lors de la mise à jour du statut de l\'action');
     return res.json();
   }
 

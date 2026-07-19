@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import './detail.css';
 import { IshikawaDiagram } from '../../components/IshikawaDiagram';
 import { getDataProvider } from '../../services/provider-manager';
-import { NCDetail, AuditEvent, IASuggestion } from '../../services/data-provider';
+import { NCDetail, AuditEvent, IASuggestion, User, CapaAction } from '../../services/data-provider';
 
 const STATUS_LABELS: Record<string, string> = {
   draft: 'Brouillon',
@@ -21,11 +21,20 @@ function NCDetailContent() {
   const id = searchParams.get('id');
 
   const [nc, setNc] = useState<NCDetail | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
   const [auditLog, setAuditLog] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'analysis' | 'actions' | 'audit'>('analysis');
   const [iaSuggestion, setIaSuggestion] = useState<IASuggestion | null>(null);
   const [iaSuggesting, setIaSuggesting] = useState(false);
+
+  // Modal Création Action CAPA
+  const [showActionModal, setShowActionModal] = useState(false);
+  const [actionTitle, setActionTitle] = useState('');
+  const [actionDesc, setActionDesc] = useState('');
+  const [actionAssigneeId, setActionAssigneeId] = useState('');
+  const [actionDueDate, setActionDueDate] = useState('');
+  const [submittingAction, setSubmittingAction] = useState(false);
 
   // État local du formulaire d'analyse
   const [whyValues, setWhyValues] = useState(['', '', '', '', '']);
@@ -50,6 +59,12 @@ function NCDetailContent() {
 
       const history = await provider.getAuditHistory(id);
       setAuditLog(history);
+
+      const userList = await provider.getUsers();
+      setUsers(userList);
+      if (userList.length > 0 && !actionAssigneeId) {
+        setActionAssigneeId(userList[0].id);
+      }
     } catch (error) {
       console.error('Erreur de récupération des détails de la NC :', error);
     } finally {
@@ -114,11 +129,52 @@ function NCDetailContent() {
     }
   };
 
+  const handleCreateAction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !actionTitle || !actionAssigneeId || !actionDueDate) return;
+
+    setSubmittingAction(true);
+    try {
+      const provider = getDataProvider();
+      await provider.createCapaAction(id, {
+        title: actionTitle.trim(),
+        description: actionDesc.trim(),
+        assigneeId: actionAssigneeId,
+        dueDate: actionDueDate
+      });
+      setShowActionModal(false);
+      setActionTitle('');
+      setActionDesc('');
+      fetchData();
+    } catch (err) {
+      alert('Erreur lors de la création de l\'action');
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
+  const handleActionStatusChange = async (actionId: string, targetStatus: 'todo' | 'in_progress' | 'done' | 'cancelled') => {
+    if (!id) return;
+    try {
+      const provider = getDataProvider();
+      await provider.updateCapaActionStatus(id, actionId, targetStatus);
+      fetchData();
+    } catch (err) {
+      alert('Erreur lors du changement de statut de l\'action');
+    }
+  };
+
   const kanbanColumns = [
-    { key: 'todo', label: 'À faire' },
-    { key: 'in_progress', label: 'En cours' },
-    { key: 'done', label: 'Terminée' }
+    { key: 'todo', label: 'À faire', color: '#6b7280' },
+    { key: 'in_progress', label: 'En cours', color: 'var(--accent-blue)' },
+    { key: 'done', label: 'Terminée', color: '#10b981' },
+    { key: 'cancelled', label: 'Annulée', color: '#ef4444' }
   ];
+
+  const isOverdue = (dateStr: string, status: string) => {
+    if (status === 'done' || status === 'cancelled') return false;
+    return new Date(dateStr).getTime() < new Date().getTime();
+  };
 
   if (!id) return <div className="container"><p style={{ color: '#ef4444' }}>Identifiant NC manquant.</p></div>;
   if (loading) return <div className="container"><p style={{ color: 'var(--text-secondary)', marginTop: '2rem' }}>Chargement de la fiche NC...</p></div>;
@@ -143,7 +199,7 @@ function NCDetailContent() {
           <span><strong>Gravité :</strong> {nc.severity.toUpperCase()}</span>
         </div>
 
-        {/* Boutons d'actions */}
+        {/* Boutons d'actions de statut de la NC */}
         <div className="state-actions" style={{ marginTop: '1.5rem' }}>
           {nc.status === 'declared' && (
             <button className="btn-transition" onClick={() => handleTransitionStatus('analyzing')}>
@@ -273,28 +329,79 @@ function NCDetailContent() {
         </>
       )}
 
-      {/* Onglet : Actions */}
+      {/* Onglet : Actions CAPA */}
       {activeTab === 'actions' && (
         <div className="detail-section">
           <div className="section-header">
             <h2 className="section-title">Plan d'Actions CAPA</h2>
-            <button className="btn-primary">+ Ajouter une action</button>
+            <button className="btn-primary" onClick={() => setShowActionModal(true)}>
+              + Ajouter une action
+            </button>
           </div>
 
           {nc.actions && nc.actions.length > 0 ? (
-            <div className="kanban-board">
+            <div className="kanban-board" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
               {kanbanColumns.map(col => (
                 <div key={col.key} className="kanban-column">
-                  <div className="kanban-column-header">{col.label}</div>
-                  {nc.actions!.filter(a => a.status === col.key).map(action => (
-                    <div key={action.id} className="kanban-card">
-                      <div className="kanban-card-title">{action.title}</div>
-                      <div className="kanban-card-meta">
-                        👤 {action.assignee_first_name} {action.assignee_last_name}<br />
-                        📅 {new Date(action.due_date).toLocaleDateString('fr-FR')}
+                  <div className="kanban-column-header" style={{ color: col.color }}>
+                    {col.label} ({nc.actions!.filter(a => a.status === col.key).length})
+                  </div>
+                  {nc.actions!.filter(a => a.status === col.key).map(action => {
+                    const overdue = isOverdue(action.due_date, action.status);
+                    return (
+                      <div key={action.id} className="kanban-card" style={{ borderColor: overdue ? '#ef4444' : undefined }}>
+                        <div className="kanban-card-title">{action.title}</div>
+                        {action.description && (
+                          <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                            {action.description}
+                          </p>
+                        )}
+                        <div className="kanban-card-meta">
+                          <div>👤 {action.assignee_first_name} {action.assignee_last_name}</div>
+                          <div style={{ color: overdue ? '#ef4444' : 'inherit', fontWeight: overdue ? 700 : 400 }}>
+                            📅 {new Date(action.due_date).toLocaleDateString('fr-FR')} {overdue && '⚠️ (En retard)'}
+                          </div>
+                        </div>
+
+                        {/* Boutons de changement de statut rapide */}
+                        <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+                          {action.status === 'todo' && (
+                            <>
+                              <button className="btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => handleActionStatusChange(action.id, 'in_progress')}>
+                                ▶ En cours
+                              </button>
+                              <button className="btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#ef4444' }} onClick={() => handleActionStatusChange(action.id, 'cancelled')}>
+                                ✕ Annuler
+                              </button>
+                            </>
+                          )}
+                          {action.status === 'in_progress' && (
+                            <>
+                              <button className="btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#10b981' }} onClick={() => handleActionStatusChange(action.id, 'done')}>
+                                ✓ Terminer
+                              </button>
+                              <button className="btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => handleActionStatusChange(action.id, 'todo')}>
+                                ↺ À faire
+                              </button>
+                              <button className="btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#ef4444' }} onClick={() => handleActionStatusChange(action.id, 'cancelled')}>
+                                ✕ Annuler
+                              </button>
+                            </>
+                          )}
+                          {action.status === 'done' && (
+                            <button className="btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => handleActionStatusChange(action.id, 'in_progress')}>
+                              ↺ Ré-ouvrir
+                            </button>
+                          )}
+                          {action.status === 'cancelled' && (
+                            <button className="btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => handleActionStatusChange(action.id, 'todo')}>
+                              ↺ Ré-activer
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ))}
             </div>
@@ -315,8 +422,10 @@ function NCDetailContent() {
               <div key={event.id} className="audit-event">
                 <div className="audit-event-action">
                   {event.action === 'created' && '✅ NC créée'}
-                  {event.action === 'status_changed' && `🔄 Statut modifié : ${STATUS_LABELS[event.previous_value?.status || ''] || event.previous_value?.status} ➔ ${STATUS_LABELS[event.new_value?.status || ''] || event.new_value?.status}`}
+                  {event.action === 'status_changed' && `🔄 Statut de la NC modifié : ${STATUS_LABELS[event.previous_value?.status || ''] || event.previous_value?.status} ➔ ${STATUS_LABELS[event.new_value?.status || ''] || event.new_value?.status}`}
                   {event.action === 'field_updated' && '✏️ Analyse des causes modifiée'}
+                  {event.action === 'action_created' && `📌 Action créée : "${event.new_value?.title}" (Assigné à : ${event.new_value?.assignee})`}
+                  {event.action === 'action_status_changed' && `⚡ Action "${event.previous_value?.action}" : ${event.previous_value?.status || 'État précédent'} ➔ ${event.new_value?.status}`}
                 </div>
                 <div className="audit-event-meta">
                   Par {event.actor_first_name} {event.actor_last_name} · {new Date(event.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -326,6 +435,85 @@ function NCDetailContent() {
             {auditLog.length === 0 && (
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>Aucune entrée dans le journal.</p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CREATION ACTION CAPA */}
+      {showActionModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2 className="section-title" style={{ marginBottom: '1.5rem' }}>Nouvelle Action CAPA</h2>
+            <form onSubmit={handleCreateAction}>
+              <div className="form-group">
+                <label>Intitulé de l'action *</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  placeholder="Ex: Remplacement du composant défectueux et formation"
+                  value={actionTitle}
+                  onChange={(e) => setActionTitle(e.target.value)}
+                  required 
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Description des travaux / consignes</label>
+                <textarea 
+                  className="form-control" 
+                  rows={3}
+                  placeholder="Détails de l'intervention à réaliser..."
+                  value={actionDesc}
+                  onChange={(e) => setActionDesc(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div className="form-group">
+                  <label>Assigner à (Utilisateur Annuaire) *</label>
+                  <select 
+                    className="form-control"
+                    value={actionAssigneeId}
+                    onChange={(e) => setActionAssigneeId(e.target.value)}
+                    required
+                  >
+                    {users.map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.first_name} {u.last_name} ({u.role === 'admin' ? 'Admin' : u.role === 'qse_manager' ? 'QSE' : 'Opérateur'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Date limite d'exécution *</label>
+                  <input 
+                    type="date" 
+                    className="form-control"
+                    value={actionDueDate}
+                    onChange={(e) => setActionDueDate(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <button 
+                  type="button" 
+                  className="btn-secondary" 
+                  onClick={() => setShowActionModal(false)}
+                >
+                  Annuler
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn-primary"
+                  disabled={submittingAction}
+                >
+                  {submittingAction ? 'Enregistrement...' : 'Ajouter l\'action'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

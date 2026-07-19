@@ -93,6 +93,10 @@ export interface IDataProvider {
   suggestCauses(id: string): Promise<IASuggestion>;
   getAuditHistory(id: string): Promise<AuditEvent[]>;
   
+  // Actions CAPA
+  createCapaAction(ncId: string, actionData: { title: string; description: string; assigneeId: string; dueDate: string }): Promise<CapaAction>;
+  updateCapaActionStatus(ncId: string, actionId: string, targetStatus: 'todo' | 'in_progress' | 'done' | 'cancelled'): Promise<CapaAction>;
+
   // Gestion Utilisateurs
   getUsers(): Promise<User[]>;
   createUser(userData: { first_name: string; last_name: string; role: 'admin' | 'qse_manager' | 'operator' | 'auditor'; email?: string; department?: string }): Promise<User>;
